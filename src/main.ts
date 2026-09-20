@@ -4,6 +4,8 @@ import { Hono } from "hono";
 
 import { buildSessionInstructions } from "@/services/mod.ts";
 
+const OPENAI_REALTIME_MODEL = "gpt-realtime-1.5";
+
 if (!Deno.env.has("OPENAI_API_KEY")) {
   console.error("OPENAI_API_KEY env var not found");
 }
@@ -27,12 +29,19 @@ app.post("/api/conversations/token", async (c) => {
   const session = await aiClient.realtime.clientSecrets.create({
     session: {
       type: "realtime",
-      model: "gpt-realtime-1.5",
+      model: OPENAI_REALTIME_MODEL,
       instructions: buildSessionInstructions(topicsToEvaluate),
     },
   });
 
-  return c.json(session);
+  return c.json({
+    provider: "openai",
+    token: session.value,
+    expiresAt: session.expires_at,
+    config: {
+      model: OPENAI_REALTIME_MODEL,
+    },
+  });
 });
 
 Deno.serve(app.fetch);
