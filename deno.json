@@ -6,7 +6,7 @@
     "@/": "./src/"
   },
   "tasks": {
-    "start": "deno run --allow-net src/main.ts"
+    "start": "deno run --allow-net --env-file -E=OPENAI_API_KEY src/main.ts"
   },
   "compilerOptions": {
     "jsx": "precompile",

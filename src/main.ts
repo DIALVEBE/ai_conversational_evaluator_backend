@@ -1,9 +1,23 @@
-import { Hono } from 'hono'
+import { OpenAIRealtimeModel, openaiRealtimeToken } from "@tanstack/ai-openai";
+import { realtimeToken } from "@tanstack/ai";
+import { Hono } from "hono";
 
-const app = new Hono()
+const REALTIME_MODEL: OpenAIRealtimeModel = "gpt-realtime";
 
-app.get('/', (c) => {
-  return c.text('Hello Hono!')
-})
+if (!Deno.env.has("OPENAI_API_KEY")) {
+  console.error("OPENAI_API_KEY env var not set");
+}
 
-Deno.serve(app.fetch)
+const app = new Hono();
+
+app.post("/conversations", async (c) => {
+  const token = await realtimeToken({
+    adapter: openaiRealtimeToken({
+      model: REALTIME_MODEL,
+    }),
+  });
+
+  return c.json(token);
+});
+
+Deno.serve(app.fetch);

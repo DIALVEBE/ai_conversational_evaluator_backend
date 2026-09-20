@@ -15,3 +15,5 @@ coverage/
 
 # Nix flake cache
 .direnv/
+
+.env
