@@ -1,7 +1,8 @@
 {
   "imports": {
     "hono": "jsr:@hono/hono@^4.13.8"
-    "@/": "./src/"
+    "@/": "./src/",
+    "openai": "npm:openai@^7.20.0"
   },
   "tasks": {
     "start": "deno run --allow-net --env-file -E=OPENAI_API_KEY src/main.ts"
