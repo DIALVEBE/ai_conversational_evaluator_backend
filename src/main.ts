@@ -2,7 +2,7 @@ import { OpenAI } from "openai";
 import { cors } from "hono/cors";
 import { Hono } from "hono";
 
-import { buildSessionInstructions } from "@/services/voice-instructions-service.ts";
+import { buildSessionInstructions } from "@/services/mod.ts";
 
 if (!Deno.env.has("OPENAI_API_KEY")) {
   console.error("OPENAI_API_KEY env var not found");
