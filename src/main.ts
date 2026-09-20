@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { OpenAI } from "openai";
+import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { Hono } from "hono";
 import * as z from "@zod/zod";
@@ -18,6 +19,7 @@ const aiClient = new OpenAI({
 
 const app = new Hono();
 
+app.use(logger());
 app.use("/api/*", cors());
 
 app.post(
