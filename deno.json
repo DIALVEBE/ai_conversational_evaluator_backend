@@ -1,11 +1,13 @@
 {
   "imports": {
+    "@hono/zod-validator": "jsr:@hono/zod-validator@^0.9.1",
     "@zod/zod": "jsr:@zod/zod@^4.6.5",
     "hono": "jsr:@hono/hono@^4.13.8",
     "openai": "npm:openai@^7.20.0"
     "@/": "./src/",
   },
   "tasks": {
+    "dev": "deno run -P --env-file --watch-hmr src/main.ts"
     "start": "deno run -P --env-file src/main.ts"
   },
   "permissions": {

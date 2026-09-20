@@ -14,6 +14,14 @@ This project requires the following environment variable defined in a `.env` fil
 
 ### Running
 
+For development
+
+```
+deno task dev
+```
+
+For production
+
 ```
 deno task start
 ```
