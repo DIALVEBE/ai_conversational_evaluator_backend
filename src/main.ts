@@ -27,17 +27,25 @@ app.post(
   zValidator(
     "json",
     z.object({
-      topics: z.array(z.string()),
+      topic: z.object({
+        general: z.string(),
+        specific: z.array(z.string()),
+      }),
     }),
   ),
   async (c) => {
-    const topics = c.req.valid("json").topics;
+    const body = c.req.valid("json");
+
+    const generalTopic = body.topic.general;
+    const specificTopics = body.topic.specific;
+
+    const instructions = buildSessionInstructions(generalTopic, specificTopics);
 
     const session = await aiClient.realtime.clientSecrets.create({
       session: {
         type: "realtime",
         model: OPENAI_REALTIME_MODEL,
-        instructions: buildSessionInstructions(topics),
+        instructions: instructions,
       },
     });
 
@@ -47,6 +55,8 @@ app.post(
       expiresAt: session.expires_at,
       config: {
         model: OPENAI_REALTIME_MODEL,
+        instructions: instructions,
+        vadMode: "server",
       },
     });
   },
