@@ -1,5 +1,6 @@
 {
   "imports": {
+    "@zod/zod": "jsr:@zod/zod@^4.6.5",
     "hono": "jsr:@hono/hono@^4.13.8",
     "openai": "npm:openai@^7.20.0"
     "@/": "./src/",
