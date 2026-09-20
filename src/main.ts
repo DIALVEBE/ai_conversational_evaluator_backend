@@ -21,7 +21,7 @@ const app = new Hono();
 app.use("/api/*", cors());
 
 app.post(
-  "/api/conversations/token",
+  "/api/conversations",
   zValidator(
     "json",
     z.object({
