@@ -1,16 +1,74 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@hono/hono@^4.13.8": "4.13.8"
+    "jsr:@hono/hono@^4.13.8": "4.13.8",
+    "npm:@tanstack/ai-openai@~0.22.8": "0.22.8_@tanstack+ai@0.55.0",
+    "npm:@tanstack/ai@0.55": "0.55.0"
   },
   "jsr": {
     "@hono/hono@4.13.8": {
       "integrity": "bbb566d9ebb81e74c0d7eeff1f9221ba9f3fda6f1832e5ca66cbddcecb2f7fec"
     }
   },
+  "npm": {
+    "@ag-ui/core@0.1.1-canary.beta.0": {
+      "integrity": "sha512-zcP3RH5p3HJTZ0kyQxNOL1blnVFTDpaShitR7UMS/thwFdl48V6CAG+WQBcYEu/dfa8mKonRez88N0Ok+nEI+w=="
+    },
+    "@standard-schema/spec@1.1.0": {
+      "integrity": "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="
+    },
+    "@tanstack/ai-event-client@0.11.3": {
+      "integrity": "sha512-K5Nw05TG2NPJNunV7LI/5m7S97XHHdxN7vwTYcbKbmA5txlToaiF4wCfYBT406m7BOeGlLHZJpr3m1M6Vaai4g==",
+      "dependencies": [
+        "@tanstack/devtools-event-client"
+      ]
+    },
+    "@tanstack/ai-openai@0.22.8_@tanstack+ai@0.55.0": {
+      "integrity": "sha512-nKeFykxjo4Ic1mE9SiVeFDeDzHUFqDwkfJfupQSTdqgNIHzO9mdT9Fr17OdxkROuBcaB/W0xuiJhDu9ukqrorw==",
+      "dependencies": [
+        "@tanstack/ai",
+        "@tanstack/ai-utils",
+        "@tanstack/openai-base",
+        "openai"
+      ]
+    },
+    "@tanstack/ai-utils@0.4.0": {
+      "integrity": "sha512-xqvAgPJkIuGk1m+jZKyb7vBTQIaBmUD9EVzlPkDWWMp80n69uwL0TnBZCVk+OwL9goTQiFy648dnBfLsiJgl6A=="
+    },
+    "@tanstack/ai@0.55.0": {
+      "integrity": "sha512-VkevqxTDQWeVjWIAR2SQzR6Hi8t6dNdZHfh4jQZEumanwyzsUbBvuPpzf6RldnMY7Z4eX0MHfV9esxAiOukc+A==",
+      "dependencies": [
+        "@ag-ui/core",
+        "@standard-schema/spec",
+        "@tanstack/ai-event-client",
+        "@tanstack/ai-utils",
+        "partial-json"
+      ]
+    },
+    "@tanstack/devtools-event-client@0.4.4": {
+      "integrity": "sha512-6T5Yop/793YI+H+5J8Hsyj4kCih9sl4t3ElLgKioW5hk3ocn+ZdSJ94tT7vL7uabxSugWYBZlOTMPzEw2puvQw==",
+      "bin": true
+    },
+    "@tanstack/openai-base@0.10.12_@tanstack+ai@0.55.0": {
+      "integrity": "sha512-FcaUXi2xP8r12HetLej4r04oIscVs4Xi4sN5EAE85jZDbfHOTUTRbRSywu6DthXiR8R4+ht8MzznMlenf/QLFg==",
+      "dependencies": [
+        "@tanstack/ai",
+        "@tanstack/ai-utils",
+        "openai"
+      ]
+    },
+    "openai@6.49.0": {
+      "integrity": "sha512-aYCc0C6L864eR6WSYIwQGyXriw/nIyZx0ObvhzOEVuk0zoBDpynjSbrionWI7q65B5H8jJX0DXR9snEzM6bfPg=="
+    },
+    "partial-json@0.1.7": {
+      "integrity": "sha512-Njv/59hHaokb/hRUjce3Hdv12wd60MtM9Z5Olmn+nehe0QDAsRtRbJPvJ0Z91TusF0SuZRIvnM+S4l6EIP8leA=="
+    }
+  },
   "workspace": {
     "dependencies": [
-      "jsr:@hono/hono@^4.13.8"
+      "jsr:@hono/hono@^4.13.8",
+      "npm:@tanstack/ai-openai@~0.22.8",
+      "npm:@tanstack/ai@0.55"
     ]
   }
 }
