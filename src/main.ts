@@ -1,6 +1,8 @@
+import { zValidator } from "@hono/zod-validator";
 import { OpenAI } from "openai";
 import { cors } from "hono/cors";
 import { Hono } from "hono";
+import * as z from "@zod/zod";
 
 import { buildSessionInstructions } from "@/services/mod.ts";
 
@@ -18,30 +20,34 @@ const app = new Hono();
 
 app.use("/api/*", cors());
 
-app.post("/api/conversations/token", async (c) => {
-  const topicsToEvaluate = [
-    "OOP Encapsulation",
-    "OOP Abstraction",
-    "OOP Inheritance",
-    "OOP Polymorphism",
-  ];
+app.post(
+  "/api/conversations/token",
+  zValidator(
+    "json",
+    z.object({
+      topics: z.array(z.string()),
+    }),
+  ),
+  async (c) => {
+    const topics = c.req.valid("json").topics;
 
-  const session = await aiClient.realtime.clientSecrets.create({
-    session: {
-      type: "realtime",
-      model: OPENAI_REALTIME_MODEL,
-      instructions: buildSessionInstructions(topicsToEvaluate),
-    },
-  });
+    const session = await aiClient.realtime.clientSecrets.create({
+      session: {
+        type: "realtime",
+        model: OPENAI_REALTIME_MODEL,
+        instructions: buildSessionInstructions(topics),
+      },
+    });
 
-  return c.json({
-    provider: "openai",
-    token: session.value,
-    expiresAt: session.expires_at,
-    config: {
-      model: OPENAI_REALTIME_MODEL,
-    },
-  });
-});
+    return c.json({
+      provider: "openai",
+      token: session.value,
+      expiresAt: session.expires_at,
+      config: {
+        model: OPENAI_REALTIME_MODEL,
+      },
+    });
+  },
+);
 
 Deno.serve(app.fetch);
