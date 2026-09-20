@@ -10,7 +10,7 @@ if (!Deno.env.has("OPENAI_API_KEY")) {
 
 const app = new Hono();
 
-app.post("/conversations", async (c) => {
+app.post("/conversations/token", async (c) => {
   const token = await realtimeToken({
     adapter: openaiRealtimeToken({
       model: REALTIME_MODEL,
