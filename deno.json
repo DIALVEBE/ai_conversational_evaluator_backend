@@ -2,10 +2,11 @@
   "imports": {
     "@tanstack/ai": "npm:@tanstack/ai@^0.55.0",
     "@tanstack/ai-openai": "npm:@tanstack/ai-openai@^0.22.8",
-    "hono": "jsr:@hono/hono@^4.13.8"
+    "hono": "jsr:@hono/hono@^4.13.8",
+    "@/": "./src/"
   },
   "tasks": {
-    "start": "deno run --allow-net main.ts"
+    "start": "deno run --allow-net src/main.ts"
   },
   "compilerOptions": {
     "jsx": "precompile",
