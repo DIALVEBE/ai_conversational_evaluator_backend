@@ -3,8 +3,9 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import * as z from "@zod/zod";
 
+import { hashPassword } from "better-auth/crypto";
 import { auth } from "@/infrastructure/auth/auth.ts";
-import { query } from "@/infrastructure/database/postgres.ts";
+import { pool, query } from "@/infrastructure/database/postgres.ts";
 import { getAuthenticatedAppUser } from "@/interfaces/http/session.ts";
 import { buildXlsxWorkbook } from "@/services/xlsx-export.ts";
 import type { AppRole } from "@/domain/users.ts";
@@ -223,6 +224,23 @@ adminRoutes.get("/summary", async (c) => {
 });
 
 adminRoutes.get("/users", async (c) => {
+  const roleParam = c.req.query("role");
+  const role = roleSchema.safeParse(roleParam).success ? roleParam : null;
+  const searchText = c.req.query("search")?.trim().slice(0, 100) ?? "";
+  const search = searchText ? `%${searchText}%` : null;
+  const active = readOptionalBoolean(c.req.query("active"));
+  const countRows = await query<{ total: string }>(
+    `
+      SELECT COUNT(*)::text AS total
+      FROM "user" u
+      LEFT JOIN user_profiles p ON p.auth_user_id = u.id
+      WHERE ($1::text IS NULL OR p.role::text = $1)
+        AND ($2::text IS NULL OR u.name ILIKE $2 OR u.email ILIKE $2 OR p.document_number ILIKE $2)
+        AND ($3::boolean IS NULL OR p.is_active = $3)
+    `,
+    [role, search, active],
+  );
+  const pagination = getPagination(c, Number(countRows[0].total));
   const rows = await query<AdminUserRow>(
     `
       SELECT
@@ -235,13 +253,121 @@ adminRoutes.get("/users", async (c) => {
         p.is_active
       FROM "user" u
       LEFT JOIN user_profiles p ON p.auth_user_id = u.id
+      WHERE ($1::text IS NULL OR p.role::text = $1)
+        AND ($2::text IS NULL OR u.name ILIKE $2 OR u.email ILIKE $2 OR p.document_number ILIKE $2)
+        AND ($3::boolean IS NULL OR p.is_active = $3)
       ORDER BY u."createdAt" DESC
+      LIMIT $4 OFFSET $5
     `,
+    [role, search, active, pagination.pageSize, pagination.offset],
   );
 
   return c.json({
     users: rows.map(formatAdminUser),
+    pagination: pagination.meta,
   });
+});
+
+adminRoutes.post("/users/:id/reset-password", async (c) => {
+  const admin = await getAuthenticatedAppUser(c);
+  if (!admin?.profile?.isActive || admin.profile.role !== "admin") {
+    return c.json({
+      message: "Solo administradores pueden restablecer contraseñas",
+    }, 403);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const targetResult = await client.query<{
+      id: string;
+      email: string;
+      is_active: boolean;
+      credential_account_id: string | null;
+    }>(
+      `
+        SELECT u.id, u.email, p.is_active, a.id AS credential_account_id
+        FROM "user" u
+        JOIN user_profiles p ON p.auth_user_id = u.id
+        LEFT JOIN account a
+          ON a."userId" = u.id AND a."providerId" = $2
+        WHERE u.id = $1
+        FOR UPDATE OF p
+      `,
+      [c.req.param("id"), "credential"],
+    );
+    const target = targetResult.rows[0];
+
+    if (!target) {
+      await client.query("ROLLBACK");
+      return c.json({ message: "No se encontró el usuario" }, 404);
+    }
+    if (target.id === admin.id) {
+      await client.query("ROLLBACK");
+      return c.json({
+        message:
+          "No puedes restablecer la cuenta con la que tienes esta sesión",
+      }, 409);
+    }
+    if (!target.is_active) {
+      await client.query("ROLLBACK");
+      return c.json({
+        message: "Activa el usuario antes de restablecer su contraseña",
+      }, 409);
+    }
+    if (!target.credential_account_id) {
+      await client.query("ROLLBACK");
+      return c.json({
+        message: "El usuario no tiene una cuenta con contraseña",
+      }, 409);
+    }
+
+    const randomBytes = crypto.getRandomValues(new Uint8Array(18));
+    const temporaryPassword = Array.from(
+      randomBytes,
+      (byte) => byte.toString(16).padStart(2, "0"),
+    ).join("");
+    const passwordHash = await hashPassword(temporaryPassword);
+
+    const credentialUpdate = await client.query(
+      `
+        UPDATE account
+        SET password = $1, "updatedAt" = now()
+        WHERE id = $2 AND "userId" = $3 AND "providerId" = $4
+      `,
+      [passwordHash, target.credential_account_id, target.id, "credential"],
+    );
+    if (credentialUpdate.rowCount !== 1) {
+      throw new Error("Credential update did not affect exactly one account");
+    }
+    const profileUpdate = await client.query(
+      `
+        UPDATE user_profiles
+        SET must_change_password = TRUE, updated_at = now()
+        WHERE auth_user_id = $1
+      `,
+      [target.id],
+    );
+    if (profileUpdate.rowCount !== 1) {
+      throw new Error("Profile update did not affect exactly one user");
+    }
+    await client.query(`DELETE FROM session WHERE "userId" = $1`, [target.id]);
+    await client.query("COMMIT");
+
+    console.info("Admin reset a user password", {
+      adminUserId: admin.id,
+      targetUserId: target.id,
+    });
+    c.header("Cache-Control", "no-store");
+    c.header("Pragma", "no-cache");
+    return c.json({ email: target.email, temporaryPassword });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Admin password reset failed", error);
+    return c.json({ message: "No fue posible restablecer la contraseña" }, 500);
+  } finally {
+    client.release();
+  }
 });
 
 adminRoutes.post(
@@ -352,16 +478,35 @@ adminRoutes.delete("/users/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+adminRoutes.get("/programs/options", async (c) => {
+  const programs = await query<{ id: string; name: string }>(
+    `SELECT id::text, name FROM academic_programs ORDER BY name`,
+  );
+  return c.json({ programs });
+});
+
 adminRoutes.get("/programs", async (c) => {
+  const searchText = c.req.query("search")?.trim().slice(0, 100) ?? "";
+  const search = searchText ? `%${searchText}%` : null;
+  const active = readOptionalBoolean(c.req.query("active"));
+  const countRows = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM academic_programs WHERE ($1::text IS NULL OR code ILIKE $1 OR name ILIKE $1) AND ($2::boolean IS NULL OR is_active = $2)`,
+    [search, active],
+  );
+  const pagination = getPagination(c, Number(countRows[0].total));
   const rows = await query<ProgramRow>(
     `
       SELECT id::text, code, name, description, is_active
       FROM academic_programs
+      WHERE ($1::text IS NULL OR code ILIKE $1 OR name ILIKE $1)
+        AND ($2::boolean IS NULL OR is_active = $2)
       ORDER BY name
+      LIMIT $3 OFFSET $4
     `,
+    [search, active, pagination.pageSize, pagination.offset],
   );
 
-  return c.json({ programs: rows.map(formatProgram) });
+  return c.json({ programs: rows.map(formatProgram), pagination: pagination.meta });
 });
 
 adminRoutes.post(
@@ -426,6 +571,23 @@ adminRoutes.delete("/programs/:id", async (c) => {
 });
 
 adminRoutes.get("/academic-spaces", async (c) => {
+  const searchText = c.req.query("search")?.trim().slice(0, 100) ?? "";
+  const search = searchText ? `%${searchText}%` : null;
+  const programId = normalizeOptionalParam(c.req.query("programId"));
+  const active = readOptionalBoolean(c.req.query("active"));
+  const params = [search, programId, active];
+  const countRows = await query<{ total: string }>(
+    `
+      SELECT COUNT(*)::text AS total
+      FROM academic_spaces s
+      JOIN academic_programs p ON p.id = s.program_id
+      WHERE ($1::text IS NULL OR s.name ILIKE $1 OR s.code ILIKE $1 OR p.name ILIKE $1)
+        AND ($2::uuid IS NULL OR s.program_id = $2::uuid)
+        AND ($3::boolean IS NULL OR s.is_active = $3)
+    `,
+    params,
+  );
+  const pagination = getPagination(c, Number(countRows[0].total));
   const rows = await query<AcademicSpaceRow>(
     `
       SELECT
@@ -440,61 +602,106 @@ adminRoutes.get("/academic-spaces", async (c) => {
         s.is_active
       FROM academic_spaces s
       JOIN academic_programs p ON p.id = s.program_id
+      WHERE ($1::text IS NULL OR s.name ILIKE $1 OR s.code ILIKE $1 OR p.name ILIKE $1)
+        AND ($2::uuid IS NULL OR s.program_id = $2::uuid)
+        AND ($3::boolean IS NULL OR s.is_active = $3)
       ORDER BY p.name, s.name
+      LIMIT $4 OFFSET $5
     `,
+    [...params, pagination.pageSize, pagination.offset],
   );
 
-  return c.json({ academicSpaces: rows.map(formatAcademicSpace) });
+  return c.json({ academicSpaces: rows.map(formatAcademicSpace), pagination: pagination.meta });
 });
 
 adminRoutes.get("/assignments", async (c) => {
-  const rows = await query<AssignmentRow>(
-    `
+  const scopeParam = c.req.query("scope");
+  const scope = scopeParam === "program" || scopeParam === "academic_space"
+    ? scopeParam
+    : null;
+  const searchText = c.req.query("search")?.trim().slice(0, 100) ?? "";
+  const search = searchText ? `%${searchText}%` : null;
+  const programId = normalizeOptionalParam(c.req.query("programId"));
+  const spaceId = normalizeOptionalParam(c.req.query("spaceId"));
+  const relationParam = c.req.query("relation");
+  const relation = relationParam === "teacher" || relationParam === "student"
+    ? relationParam
+    : null;
+  const filters = [scope, search, programId, spaceId, relation];
+  const assignmentRowsSql = `
+    WITH all_assignments AS (
       SELECT
         CONCAT('program:', ps.program_id::text, ':student:', ps.student_user_id) AS id,
         'program'::text AS scope,
         'student'::text AS relation,
         p.id::text AS target_id,
         p.name AS target_name,
+        p.id::text AS program_id,
+        NULL::text AS space_id,
         u.id AS user_id,
         u.name AS user_name,
-        u.email AS user_email
+        u.email AS user_email,
+        up.document_number
       FROM program_students ps
       JOIN academic_programs p ON p.id = ps.program_id
       JOIN "user" u ON u.id = ps.student_user_id
+      LEFT JOIN user_profiles up ON up.auth_user_id = u.id
 
       UNION ALL
 
       SELECT
-        CONCAT('space:', ast.academic_space_id::text, ':teacher:', ast.teacher_user_id) AS id,
-        'academic_space'::text AS scope,
-        'teacher'::text AS relation,
-        s.id::text AS target_id,
-        s.name AS target_name,
-        u.id AS user_id,
-        u.name AS user_name,
-        u.email AS user_email
+        CONCAT('space:', ast.academic_space_id::text, ':teacher:', ast.teacher_user_id),
+        'academic_space'::text,
+        'teacher'::text,
+        s.id::text,
+        s.name,
+        s.program_id::text,
+        s.id::text,
+        u.id,
+        u.name,
+        u.email,
+        up.document_number
       FROM academic_space_teachers ast
       JOIN academic_spaces s ON s.id = ast.academic_space_id
       JOIN "user" u ON u.id = ast.teacher_user_id
+      LEFT JOIN user_profiles up ON up.auth_user_id = u.id
 
       UNION ALL
 
       SELECT
-        CONCAT('space:', ass.academic_space_id::text, ':student:', ass.student_user_id) AS id,
-        'academic_space'::text AS scope,
-        'student'::text AS relation,
-        s.id::text AS target_id,
-        s.name AS target_name,
-        u.id AS user_id,
-        u.name AS user_name,
-        u.email AS user_email
+        CONCAT('space:', ass.academic_space_id::text, ':student:', ass.student_user_id),
+        'academic_space'::text,
+        'student'::text,
+        s.id::text,
+        s.name,
+        s.program_id::text,
+        s.id::text,
+        u.id,
+        u.name,
+        u.email,
+        up.document_number
       FROM academic_space_students ass
       JOIN academic_spaces s ON s.id = ass.academic_space_id
       JOIN "user" u ON u.id = ass.student_user_id
-
+      LEFT JOIN user_profiles up ON up.auth_user_id = u.id
+    )
+    SELECT * FROM all_assignments
+    WHERE ($1::text IS NULL OR scope = $1)
+      AND ($2::text IS NULL OR user_name ILIKE $2 OR user_email ILIKE $2 OR document_number ILIKE $2 OR target_name ILIKE $2)
+      AND ($3::uuid IS NULL OR program_id = $3::text)
+      AND ($4::uuid IS NULL OR space_id = $4::text)
+      AND ($5::text IS NULL OR relation = $5)
+  `;
+  const countRows = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM (${assignmentRowsSql}) filtered_assignments`,
+    filters,
+  );
+  const pagination = getPagination(c, Number(countRows[0].total));
+  const rows = await query<AssignmentRow>(
+    `${assignmentRowsSql}
       ORDER BY scope, target_name, relation, user_name
-    `,
+      LIMIT $6 OFFSET $7`,
+    [...filters, pagination.pageSize, pagination.offset],
   );
 
   return c.json({
@@ -508,6 +715,7 @@ adminRoutes.get("/assignments", async (c) => {
       userName: row.user_name,
       userEmail: row.user_email,
     })),
+    pagination: pagination.meta,
   });
 });
 
@@ -682,14 +890,33 @@ adminRoutes.get("/results/export.xlsx", async (c) => {
 
 adminRoutes.get("/results", async (c) => {
   const filters = readAdminResultFilters(c);
+  const params = adminResultFilterParams(filters);
+  const countRows = await query<{ total: string }>(
+    `
+      SELECT COUNT(*)::text AS total
+      FROM evaluation_attempts ea
+      JOIN live_talks lt ON lt.id = ea.live_talk_id
+      JOIN academic_spaces s ON s.id = lt.academic_space_id
+      JOIN academic_programs p ON p.id = s.program_id
+      WHERE ($1::uuid IS NULL OR p.id = $1::uuid)
+        AND ($2::uuid IS NULL OR s.id = $2::uuid)
+        AND ($3::text IS NULL OR lt.created_by_teacher_user_id = $3::text)
+        AND ($4::text IS NULL OR ea.student_user_id = $4::text)
+        AND ($5::timestamptz IS NULL OR ea.started_at >= $5::timestamptz)
+        AND ($6::timestamptz IS NULL OR ea.started_at < ($6::date + INTERVAL '1 day'))
+    `,
+    params,
+  );
+  const pagination = getPagination(c, Number(countRows[0].total));
 
   const rows = await query<AdminResultRow>(
-    adminResultsQuery("ea.started_at DESC", 250),
-    adminResultFilterParams(filters),
+    adminResultsQuery("ea.started_at DESC", pagination.pageSize, pagination.offset),
+    params,
   );
 
   return c.json({
     results: rows.map(formatAdminResult),
+    pagination: pagination.meta,
   });
 });
 
@@ -1110,7 +1337,7 @@ function adminResultFilterParams(filters: AdminResultFilters) {
   ];
 }
 
-function adminResultsQuery(orderBy: string, limit: number) {
+function adminResultsQuery(orderBy: string, limit: number, offset = 0) {
   return `
     SELECT
       ea.id::text,
@@ -1162,7 +1389,32 @@ function adminResultsQuery(orderBy: string, limit: number) {
       AND ($6::timestamptz IS NULL OR ea.started_at < ($6::date + INTERVAL '1 day'))
     ORDER BY ${orderBy}
     LIMIT ${limit}
+    OFFSET ${offset}
   `;
+}
+
+function getPagination(c: Context, totalItems: number) {
+  const pageSizeParam = Number(c.req.query("pageSize"));
+  const pageSize = Number.isFinite(pageSizeParam) && pageSizeParam > 0
+    ? Math.min(Math.floor(pageSizeParam), 100)
+    : 25;
+  const requestedPage = Number(c.req.query("page"));
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Number.isFinite(requestedPage) && requestedPage > 0
+    ? Math.min(Math.floor(requestedPage), totalPages)
+    : 1;
+
+  return {
+    pageSize,
+    offset: (page - 1) * pageSize,
+    meta: { page, pageSize, totalItems, totalPages },
+  };
+}
+
+function readOptionalBoolean(value: string | undefined): boolean | null {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
 }
 
 function buildResultsCsv(rows: Array<ReturnType<typeof formatAdminResult>>) {
