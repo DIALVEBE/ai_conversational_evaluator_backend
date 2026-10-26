@@ -16,6 +16,7 @@ export const auth = betterAuth({
   database: pool,
   emailAndPassword: {
     enabled: true,
+    minPasswordLength: 6,
   },
   trustedOrigins: frontendOrigins,
   advanced: {

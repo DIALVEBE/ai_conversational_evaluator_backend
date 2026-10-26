@@ -7,6 +7,7 @@ type UserProfileRow = {
   document_number: string | null;
   institutional_code: string | null;
   is_active: boolean;
+  must_change_password: boolean;
 };
 
 export async function findUserProfile(
@@ -14,7 +15,8 @@ export async function findUserProfile(
 ): Promise<UserProfile | null> {
   const rows = await query<UserProfileRow>(
     `
-      SELECT auth_user_id, role, document_number, institutional_code, is_active
+      SELECT auth_user_id, role, document_number, institutional_code, is_active,
+        must_change_password
       FROM user_profiles
       WHERE auth_user_id = $1
     `,
@@ -33,6 +35,7 @@ export async function findUserProfile(
     documentNumber: row.document_number,
     institutionalCode: row.institutional_code,
     isActive: row.is_active,
+    mustChangePassword: row.must_change_password,
   };
 }
 
@@ -41,6 +44,7 @@ export async function upsertUserProfile(input: {
   role: AppRole;
   documentNumber?: string;
   institutionalCode?: string;
+  mustChangePassword?: boolean;
 }): Promise<void> {
   await query(
     `
@@ -48,14 +52,16 @@ export async function upsertUserProfile(input: {
         auth_user_id,
         role,
         document_number,
-        institutional_code
+        institutional_code,
+        must_change_password
       )
-      VALUES ($1, $2, $3, $4)
+      VALUES ($1, $2, $3, $4, COALESCE($5, FALSE))
       ON CONFLICT (auth_user_id)
       DO UPDATE SET
         role = EXCLUDED.role,
         document_number = EXCLUDED.document_number,
         institutional_code = EXCLUDED.institutional_code,
+        must_change_password = COALESCE($5, user_profiles.must_change_password),
         updated_at = now()
     `,
     [
@@ -63,6 +69,7 @@ export async function upsertUserProfile(input: {
       input.role,
       input.documentNumber ?? null,
       input.institutionalCode ?? null,
+      input.mustChangePassword ?? null,
     ],
   );
 }

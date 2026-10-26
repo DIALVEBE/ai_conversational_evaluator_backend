@@ -60,7 +60,23 @@ docker compose up -d postgres
 
 El Compose local publica PostgreSQL en el puerto `5433` y carga las migraciones al inicializar una base nueva. Si tienes este repositorio clonado de forma independiente, configura `DATABASE_URL` para apuntar a una instancia PostgreSQL que ya tenga el esquema de Virtual Challenge.
 
-### 3. Iniciar la API
+### 3. Importar el padrón académico (workspace combinado)
+
+Los archivos Excel se mantienen fuera de este repositorio porque contienen datos personales. Desde la raíz del backend, valida primero el resumen de importación:
+
+```bash
+deno task import:roster --dry-run "../docs/DOCENTES SEGUIMIENTO A SYLLABUS.xlsx" "../docs/ESTUDIANTES SEGUIMIENTO SYLLABUS.xlsx"
+```
+
+Si el resumen es correcto, ejecuta la importación:
+
+```bash
+deno task import:roster "../docs/DOCENTES SEGUIMIENTO A SYLLABUS.xlsx" "../docs/ESTUDIANTES SEGUIMIENTO SYLLABUS.xlsx"
+```
+
+El proceso es idempotente: no reemplaza contraseñas de cuentas existentes. Para cuentas nuevas usa el correo institucional y el número de documento como contraseña temporal, y exige cambiarla por una contraseña de al menos 12 caracteres al primer ingreso. El padrón contiene programas/unidades académicas y materias, pero no una columna explícita de facultad. Tampoco incluye el grupo de matrícula de cada estudiante; por eso se omiten las asociaciones estudiante-materia cuando la relación con docentes resulta ambigua.
+
+### 4. Iniciar la API
 
 Desde la raíz del repositorio del backend:
 
@@ -76,7 +92,7 @@ deno task start
 
 La API usa la ruta base `/api`; entre sus grupos se encuentran `/api/auth`, `/api/admin`, `/api/teacher`, `/api/student`, `/api/me` y `/api/conversations`.
 
-### 4. Cargar datos de demostración (opcional)
+### 5. Cargar datos de demostración (opcional)
 
 Con la base de datos disponible y las variables configuradas:
 
@@ -100,6 +116,7 @@ Contraseña local de demostración: `Demo2026!`. Úsala únicamente en entornos 
 deno task dev   # desarrollo con recarga automática
 deno task start # ejecución sin recarga automática
 deno task seed  # carga de datos de demostración
+deno task import:roster # importar padrón desde los Excel del workspace
 ```
 
 ## Modelo de IA

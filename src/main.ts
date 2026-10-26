@@ -37,6 +37,23 @@ app.use(
   }),
 );
 
+app.use("/api/*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (
+    path.startsWith("/api/auth/") || path === "/api/me" ||
+    path === "/api/me/initial-password"
+  ) {
+    return next();
+  }
+
+  const user = await getAuthenticatedAppUser(c);
+  if (user?.profile?.mustChangePassword) {
+    return c.json({ message: "Debes actualizar tu contraseña antes de continuar" }, 403);
+  }
+
+  return next();
+});
+
 app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
 app.route("/api/admin", adminRoutes);
 app.route("/api/teacher", teacherRoutes);
@@ -55,6 +72,46 @@ app.get("/api/me", async (c) => {
 
   return c.json({ user });
 });
+
+app.post(
+  "/api/me/initial-password",
+  zValidator(
+    "json",
+    z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(12).max(128),
+    }),
+  ),
+  async (c) => {
+    const user = await getAuthenticatedAppUser(c);
+
+    if (!user?.profile) {
+      return c.json({ message: "No autenticado" }, 401);
+    }
+
+    if (!user.profile.mustChangePassword) {
+      return c.json({ message: "No hay una actualización pendiente" }, 409);
+    }
+
+    const { currentPassword, newPassword } = c.req.valid("json");
+
+    try {
+      await auth.api.changePassword({
+        body: { currentPassword, newPassword, revokeOtherSessions: true },
+        headers: c.req.raw.headers,
+      });
+    } catch {
+      return c.json({ message: "La contraseña temporal no es válida" }, 400);
+    }
+
+    await query(
+      `UPDATE user_profiles SET must_change_password = FALSE, updated_at = now() WHERE auth_user_id = $1`,
+      [user.id],
+    );
+
+    return c.json({ success: true });
+  },
+);
 
 app.post(
   "/api/conversations",

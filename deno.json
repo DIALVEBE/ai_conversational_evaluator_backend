@@ -3,6 +3,7 @@
     "@hono/zod-validator": "jsr:@hono/zod-validator@^0.9.1",
     "@zod/zod": "jsr:@zod/zod@^4.6.5",
     "better-auth": "npm:better-auth@^1.4.6",
+    "exceljs": "npm:exceljs@^4.4.0",
     "hono": "jsr:@hono/hono@^4.13.8",
     "openai": "npm:openai@^7.20.0",
     "pg": "npm:pg@^8.16.3",
@@ -11,7 +12,8 @@
   "tasks": {
     "dev": "deno run -P --env-file --watch-hmr src/main.ts",
     "start": "deno run -P --env-file src/main.ts",
-    "seed": "deno run -P --env-file src/scripts/seed-demo-users.ts"
+    "seed": "deno run -P --env-file src/scripts/seed-demo-users.ts",
+    "import:roster": "deno run --allow-env --allow-net --allow-sys=uid --allow-read=../docs,./migrations --env-file src/scripts/import-academic-roster.ts"
   },
   "permissions": {
     "default": {

@@ -6,6 +6,7 @@ export type UserProfile = {
   documentNumber: string | null;
   institutionalCode: string | null;
   isActive: boolean;
+  mustChangePassword: boolean;
 };
 
 export type AuthenticatedAppUser = {
