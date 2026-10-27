@@ -12,6 +12,7 @@
   "tasks": {
     "dev": "deno run -P --env-file --watch-hmr src/main.ts",
     "start": "deno run -P --env-file src/main.ts",
+    "migrate": "deno run --allow-env --allow-net --allow-read=./migrations --env-file src/scripts/migrate.ts",
     "seed": "deno run -P --env-file src/scripts/seed-demo-users.ts",
     "import:roster": "deno run --allow-env --allow-net --allow-sys=uid --allow-read=../docs,./migrations --env-file src/scripts/import-academic-roster.ts"
   },

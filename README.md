@@ -52,15 +52,25 @@ No publiques `.env` ni incluyas secretos en el frontend. Si Vite utiliza otro pu
 
 ### 2. Iniciar PostgreSQL
 
-El repositorio del backend no contiene el archivo Compose ni las migraciones. En el workspace combinado de Virtual Challenge, estos recursos están en el directorio raíz, junto a las carpetas de backend y frontend. Desde esa raíz, ejecuta:
+En el workspace combinado, el Compose está en el directorio raíz, junto a las carpetas de backend y frontend. Desde esa raíz, ejecuta:
 
 ```bash
 docker compose up -d postgres
 ```
 
-El Compose local publica PostgreSQL en el puerto `5433` y carga las migraciones al inicializar una base nueva. Si tienes este repositorio clonado de forma independiente, configura `DATABASE_URL` para apuntar a una instancia PostgreSQL que ya tenga el esquema de Virtual Challenge.
+El Compose local publica PostgreSQL en el puerto `5433` y carga las migraciones al inicializar una base nueva. Si tienes este repositorio clonado de forma independiente, configura `DATABASE_URL` para apuntar a una base PostgreSQL vacía o a una base con el esquema existente de Virtual Challenge.
 
-### 3. Importar el padrón académico (workspace combinado)
+### 3. Crear o actualizar el esquema
+
+Desde la raíz del repositorio del backend, ejecuta:
+
+```bash
+deno task migrate
+```
+
+El comando aplica, en orden, los archivos de `migrations/` y registra cada versión en `schema_migrations`. Es seguro volverlo a ejecutar. Las migraciones crean también las tablas propias de la aplicación, incluida `user_profiles`; Better Auth no crea esa tabla. En el workspace combinado, Compose ya aplica las mismas migraciones al inicializar una base nueva, por lo que `deno task migrate` solo registrará las versiones pendientes.
+
+### 4. Importar el padrón académico (workspace combinado)
 
 Los archivos Excel se mantienen fuera de este repositorio porque contienen datos personales. Desde la raíz del backend, valida primero el resumen de importación:
 
@@ -76,7 +86,7 @@ deno task import:roster "../docs/DOCENTES SEGUIMIENTO A SYLLABUS.xlsx" "../docs/
 
 El proceso es idempotente: no reemplaza contraseñas de cuentas existentes. Para cuentas nuevas usa el correo institucional y el número de documento como contraseña temporal, y exige cambiarla por una contraseña de al menos 12 caracteres al primer ingreso. El padrón contiene programas/unidades académicas y materias, pero no una columna explícita de facultad. Tampoco incluye el grupo de matrícula de cada estudiante; por eso se omiten las asociaciones estudiante-materia cuando la relación con docentes resulta ambigua.
 
-### 4. Iniciar la API
+### 5. Iniciar la API
 
 Desde la raíz del repositorio del backend:
 
@@ -92,7 +102,7 @@ deno task start
 
 La API usa la ruta base `/api`; entre sus grupos se encuentran `/api/auth`, `/api/admin`, `/api/teacher`, `/api/student`, `/api/me` y `/api/conversations`.
 
-### 5. Cargar datos de demostración (opcional)
+### 6. Cargar datos de demostración (opcional)
 
 Con la base de datos disponible y las variables configuradas:
 
@@ -115,6 +125,7 @@ Contraseña local de demostración: `Demo2026!`. Úsala únicamente en entornos 
 ```bash
 deno task dev   # desarrollo con recarga automática
 deno task start # ejecución sin recarga automática
+deno task migrate # aplicar migraciones PostgreSQL
 deno task seed  # carga de datos de demostración
 deno task import:roster # importar padrón desde los Excel del workspace
 ```
